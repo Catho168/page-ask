@@ -2596,6 +2596,22 @@ button.quote-btn .icon {
   transform: translateY(-1px) rotate(90deg);
 }
 
+/* Expand animation, the same fast ease-out drop as the header dropdowns. Visual-only
+   (opacity/transform): layout height still settles in one frame, so the bottom-spacer +
+   center-lock scroll model is never fed a mid-animation size. Open-only — closing is
+   instant, matching the dropdown panels. New tool steps replay it as they mount while open. */
+@keyframes round-drop {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+.round[open] > .think-text,
+.round[open] > .step {
+  animation: round-drop 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 .round .think-text {
   margin: 8px 0 4px;
   padding: 0 0 0 2px;
