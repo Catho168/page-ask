@@ -1,6 +1,17 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { MarkdownView } from '@/components/MarkdownView';
-import { IconArrowDown, IconCheck, IconCopy, IconEdit, IconQuote, IconQuoteMark, IconReload } from '@/components/icons';
+import {
+  IconArrowDown,
+  IconCheck,
+  IconCopy,
+  IconEdit,
+  IconHistory,
+  IconNewChat,
+  IconQuote,
+  IconQuoteMark,
+  IconReload,
+  IconSettings,
+} from '@/components/icons';
 import {
   getConversation,
   deleteConversation,
@@ -1507,36 +1518,46 @@ export default function App() {
           {currentTitle}
         </div>
         <div className="hd-right">
+          {/* Icon-only buttons: the accessible name comes from aria-label, the hover tooltip from title */}
           <button
-            className="ghost"
+            className="ghost hd-btn"
             onClick={newConversation}
             disabled={busy || messages.length === 0}
             title={t('header.newChat.title')}
+            aria-label={t('header.newChat')}
           >
-            {t('header.newChat')}
+            <IconNewChat />
           </button>
           <button
-            className={`ghost ${historyOpen ? 'on' : ''}`}
+            className={`ghost hd-btn ${historyOpen ? 'on' : ''}`}
             onClick={toggleHistory}
             disabled={!pageUrl || busy}
             title={t('header.history.title')}
+            aria-label={t('header.history')}
           >
-            {conversations.length
-              ? t('history.titleWithCount', { count: conversations.length })
-              : t('header.history')}
+            <IconHistory />
+            {conversations.length > 0 && <span className="hd-badge">{conversations.length}</span>}
           </button>
           <button
-            className={`ghost ${settingsOpen ? 'on' : ''}`}
+            className={`ghost hd-btn ${settingsOpen ? 'on' : ''}`}
             onClick={() => {
               requestComposerExpanded(false);
               setSettingsOpen((v) => !v);
             }}
             title={t('header.settings.title')}
+            aria-label={t('header.settings')}
           >
-            {t('header.settings')}
+            <IconSettings />
           </button>
-          <button className="ghost" onClick={() => void load()} disabled={pageState.kind === 'loading'}>
-            {pageState.kind === 'loading' ? '…' : t('header.reload')}
+          <button
+            className="ghost hd-btn"
+            onClick={() => void load()}
+            disabled={pageState.kind === 'loading'}
+            title={t('header.reload')}
+            aria-label={t('header.reload')}
+          >
+            {/* The `…` placeholder survives the iconization: it still says "reading" without text labels */}
+            {pageState.kind === 'loading' ? '…' : <IconReload />}
           </button>
         </div>
       </header>

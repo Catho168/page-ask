@@ -262,6 +262,36 @@ button.primary.save:hover:not(:disabled) {
   border-color: var(--line);
 }
 
+/* Header buttons are icon-only: 16px glyph (+ the history count badge), name carried by aria-label/title */
+.hd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+}
+
+.hd-badge {
+  /* Inherits the button color: dim in idle, full-strength when the panel is open (.on) */
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+}
+
+/* Dropdown panels pop in fast and settle soft: easeOutExpo front-loads the motion so the expand
+   reads in a single frame yet lands without a hard stop. Open-only — the panels unmount on close. */
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scaleY(0.96);
+  }
+}
+
+.settings,
+.convs {
+  transform-origin: top center;
+  animation: drop-in 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 /* ---------- page card ---------- */
 
 .page {

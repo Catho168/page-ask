@@ -36,7 +36,6 @@ export const enUS = {
   'history.empty': 'No chats yet',
   'history.untitled': 'Untitled',
   'history.count': ', {count} turns',
-  'history.titleWithCount': 'History {count}',
   'history.delete': 'Delete this chat',
   'history.deleteConfirm': 'Delete this chat? This cannot be undone.',
   'history.deleteCancel': 'Cancel',

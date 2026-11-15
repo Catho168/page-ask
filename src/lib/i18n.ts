@@ -38,7 +38,6 @@ export const zhCN = {
   'history.empty': '还没有记录',
   'history.untitled': '无标题',
   'history.count': '共 {count} 轮',
-  'history.titleWithCount': '历史 {count}',
   'history.delete': '删除这段对话',
   'history.deleteConfirm': '删除这段对话？操作不可撤销',
   'history.deleteCancel': '取消',
