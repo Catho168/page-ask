@@ -166,6 +166,14 @@ body {
 
 /* ---------- header ---------- */
 
+/* The header stays in flow and anchors the floating panels: absolute positioning against this
+   wrapper drops them right below the header whatever its exact height, and opening them never
+   squeezes the conversation underneath. */
+.hd-area {
+  position: relative;
+  flex: 0 0 auto;
+}
+
 .hd {
   display: flex;
   align-items: center;
@@ -277,6 +285,18 @@ button.primary.save:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/* Settings/history panels are overlays anchored to the header's bottom edge (.hd-area is relative);
+   they cover the conversation instead of pushing it down. */
+.settings,
+.convs {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.16);
+}
+
 /* Dropdown panels pop in fast and settle soft: easeOutExpo front-loads the motion so the expand
    reads in a single frame yet lands without a hard stop. Open-only — the panels unmount on close. */
 @keyframes drop-in {
@@ -293,6 +313,22 @@ button.primary.save:hover:not(:disabled) {
 }
 
 /* ---------- page card ---------- */
+
+/* The page card (and the page-failure card) float above the conversation instead of occupying a
+   flow slot; App.tsx keeps the list's top padding equal to the collapsed card's height, so the
+   first messages are never hidden behind the overlay when scrolled to the top. */
+.page-float {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 25;
+}
+
+.page-float .page,
+.page-float .card.error {
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.16);
+}
 
 .page {
   flex: 0 0 auto;
@@ -2599,7 +2635,8 @@ button.quote-btn .icon {
 /* Expand animation, the same fast ease-out drop as the header dropdowns. Visual-only
    (opacity/transform): layout height still settles in one frame, so the bottom-spacer +
    center-lock scroll model is never fed a mid-animation size. Open-only — closing is
-   instant, matching the dropdown panels. New tool steps replay it as they mount while open. */
+   instant, matching the dropdown panels. The body is rekeyed on every open (RoundPanel),
+   so the animation replays on manual expand too, not just while streaming. */
 @keyframes round-drop {
   from {
     opacity: 0;
@@ -2607,8 +2644,8 @@ button.quote-btn .icon {
   }
 }
 
-.round[open] > .think-text,
-.round[open] > .step {
+.round[open] .think-text,
+.round[open] .step {
   animation: round-drop 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 

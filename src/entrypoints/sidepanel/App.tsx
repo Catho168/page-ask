@@ -171,6 +171,9 @@ export default function App() {
   const [pageState, setPageState] = useState<PageState>({ kind: 'loading' });
   const [showPageText, setShowPageText] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Height of the floating page card (or page-failure card): the conversation list reserves this
+  // much top space so the first messages are never hidden behind the overlay at scroll top.
+  const [pageFloatH, setPageFloatH] = useState(0);
 
   const [settings, setSettings] = useState<Settings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -217,7 +220,10 @@ export default function App() {
   const composerTransitionRef = useRef<{ height: number; backdrop: number } | null>(null);
   const composerExpandingRef = useRef(false);
   const composerModeFromRef = useRef<number | null>(null);
-  const headerRef = useRef<HTMLElement | null>(null);
+  // On the .hd-area wrapper, not <header> itself: the wrapper is the offsetParent of the floating
+  // panels and its offsetTop/offsetHeight equal the header's (absolute panels add no height),
+  // while <header>.parentElement would now be the wrapper instead of .app.
+  const headerRef = useRef<HTMLDivElement | null>(null);
   const [composerSpace, setComposerSpace] = useState({ height: 0, width: 0 });
   const requestComposerExpanded = useCallback((next: boolean) => {
     if (next === composerExpandedRef.current) return;
@@ -312,6 +318,8 @@ export default function App() {
 
   const toggleHistory = useCallback(() => {
     requestComposerExpanded(false);
+    // Both panels are overlays at the same anchor — keep them mutually exclusive.
+    setSettingsOpen(false);
     const next = !historyOpen;
     setHistoryOpen(next);
     // Opening the panel is also a retry: a backend that was down when the tab loaded may be back now.
@@ -1389,7 +1397,7 @@ export default function App() {
   }, []);
   useLayoutEffect(() => {
     const header = headerRef.current;
-    const app = header?.parentElement;
+    const app = header?.closest<HTMLElement>('.app') ?? null;
     if (!header || !app) return;
     const measure = () => {
       // The floating overlay must start at the header's bottom edge, not 8px below: the page card
@@ -1409,6 +1417,27 @@ export default function App() {
     observer.observe(header);
     return () => observer.disconnect();
   }, []);
+
+  // The page card / page-failure card floats above the conversation; keep the reserved top space
+  // in sync with its natural (collapsed) height. The expanded page-text preview is an overlay the
+  // user deliberately opened — it may cover the top, so it does not grow the reservation.
+  const pageFloatRef = useRef<HTMLDivElement | null>(null);
+  const showPageTextRef = useRef(false);
+  showPageTextRef.current = showPageText;
+  useLayoutEffect(() => {
+    const el = pageFloatRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') {
+      setPageFloatH(0);
+      return;
+    }
+    const measure = () => {
+      if (!showPageTextRef.current) setPageFloatH(el.offsetHeight);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pageState, verbose]);
 
   // Measure natural text height before applying flex fill or interpolating the whole box. Expanded
   // mode never auto-collapses on short text — the button, send, and leaving the page collapse it.
@@ -1512,7 +1541,10 @@ export default function App() {
 
   return (
     <div className="app">
-      <header ref={headerRef} className="hd">
+      {/* The header stays in flow; the settings/history panels below drop as absolute overlays
+          (anchored to this wrapper's bottom edge), so opening them never squeezes the list. */}
+      <div ref={headerRef} className="hd-area">
+      <header className="hd">
         {/* Top left: current conversation title (auto-title writes it after the first answer; blank until then) */}
         <div className={`hd-title${titlePulse ? " in" : ""}`} title={currentTitle} onAnimationEnd={() => setTitlePulse(false)}>
           {currentTitle}
@@ -1542,6 +1574,8 @@ export default function App() {
             className={`ghost hd-btn ${settingsOpen ? 'on' : ''}`}
             onClick={() => {
               requestComposerExpanded(false);
+              // Both panels are overlays at the same anchor — keep them mutually exclusive.
+              setHistoryOpen(false);
               setSettingsOpen((v) => !v);
             }}
             title={t('header.settings.title')}
@@ -1584,31 +1618,38 @@ export default function App() {
           onDelete={(id) => void removeConversation(id)}
         />
       )}
-
-      {/* Page card: one line by default so it doesn't crowd the conversation; not rendered in clean mode */}
-      {pageState.kind === 'ready' && verbose && (
-        <PageCard
-          page={pageState.page}
-          open={showPageText}
-          copied={copied}
-          onToggle={() => setShowPageText((v) => !v)}
-          onCopy={() => void handleCopy()}
-        />
-      )}
-
-      {pageState.kind === 'failed' && (
-        <section className="card error">
-          <div className="card-title">{t('page.failure.title')}</div>
-          <p>{t(REASON_HINT[pageState.failure.reason])}</p>
-          <pre className="raw">{pageState.failure.message}</pre>
-        </section>
-      )}
+      </div>
 
       {/* Conversation area */}
       <div className="list-wrap">
+      {/* Page card and page-failure card float above the conversation; the list reserves the
+          collapsed card's height as top padding so nothing is hidden behind it at scroll top */}
+      {pageState.kind === 'ready' && verbose && (
+        <div className="page-float" ref={pageFloatRef}>
+          <PageCard
+            page={pageState.page}
+            open={showPageText}
+            copied={copied}
+            onToggle={() => setShowPageText((v) => !v)}
+            onCopy={() => void handleCopy()}
+          />
+        </div>
+      )}
+
+      {pageState.kind === 'failed' && (
+        <div className="page-float" ref={pageFloatRef}>
+          <section className="card error">
+            <div className="card-title">{t('page.failure.title')}</div>
+            <p>{t(REASON_HINT[pageState.failure.reason])}</p>
+            <pre className="raw">{pageState.failure.message}</pre>
+          </section>
+        </div>
+      )}
+
       <div
         className="list"
         ref={listRef}
+        style={{ paddingTop: pageFloatH > 0 ? `${pageFloatH + 8}px` : undefined }}
         onScroll={handleListScroll}
         onWheel={noteUserScroll}
         onTouchMove={noteUserScroll}
