@@ -285,16 +285,15 @@ button.primary.save:hover:not(:disabled) {
   font-weight: 600;
 }
 
-/* Settings/history panels are overlays anchored to the header's bottom edge (.hd-area is relative);
-   they cover the conversation instead of pushing it down. */
-.settings,
-.convs {
+/* Settings/history panels drop as one strip anchored to the header's bottom edge (.hd-area is
+   relative); the strip covers the conversation instead of pushing it down, and its measured height
+   drives the page card's glide and the list's reserved top space (reserve animator in App.tsx). */
+.hd-drop {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   right: 0;
   z-index: 30;
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.16);
 }
 
 /* Dropdown panels pop in fast and settle soft: easeOutExpo front-loads the motion so the expand
@@ -315,19 +314,15 @@ button.primary.save:hover:not(:disabled) {
 /* ---------- page card ---------- */
 
 /* The page card (and the page-failure card) float above the conversation instead of occupying a
-   flow slot; App.tsx keeps the list's top padding equal to the collapsed card's height, so the
-   first messages are never hidden behind the overlay when scrolled to the top. */
+   flow slot; App.tsx keeps the list's top padding at the card's height (plus the open dropdown's),
+   so the first messages are never hidden behind the overlays when scrolled to the top. The top
+   offset is applied imperatively (reserve animator), 0 here is only the pre-measure default. */
 .page-float {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 25;
-}
-
-.page-float .page,
-.page-float .card.error {
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.16);
 }
 
 .page {

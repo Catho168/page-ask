@@ -174,6 +174,8 @@ export default function App() {
   // Height of the floating page card (or page-failure card): the conversation list reserves this
   // much top space so the first messages are never hidden behind the overlay at scroll top.
   const [pageFloatH, setPageFloatH] = useState(0);
+  // Height of the open dropdown panel (0 when both are closed), measured on the .hd-drop strip.
+  const [dropH, setDropH] = useState(0);
 
   const [settings, setSettings] = useState<Settings | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -584,6 +586,9 @@ export default function App() {
     prepareSend,
     conversationAssigned,
     clearCenterLock,
+    syncContentHeight,
+    refreshScrollBtn,
+    scrollTo,
     scrollToBottom,
     resetScroll,
     followBottom,
@@ -1418,10 +1423,14 @@ export default function App() {
     return () => observer.disconnect();
   }, []);
 
-  // The page card / page-failure card floats above the conversation; keep the reserved top space
-  // in sync with its natural (collapsed) height. The expanded page-text preview is an overlay the
-  // user deliberately opened — it may cover the top, so it does not grow the reservation.
+  // The page card / page-failure card floats above the conversation. Two measurements drive the
+  // layout: the open dropdown panel's height (dropH) and the card's collapsed height (pageFloatH —
+  // the expanded page-text preview is an overlay the user deliberately opened, so it does not grow
+  // the reservation). The card sits dropH below the list top and the list reserves
+  // dropH + cardH + 8 of top padding, so the header → panel → card → message chain keeps its gaps
+  // and nothing is hidden at scroll top.
   const pageFloatRef = useRef<HTMLDivElement | null>(null);
+  const dropRef = useRef<HTMLDivElement | null>(null);
   const showPageTextRef = useRef(false);
   showPageTextRef.current = showPageText;
   useLayoutEffect(() => {
@@ -1438,6 +1447,90 @@ export default function App() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [pageState, verbose]);
+
+  useLayoutEffect(() => {
+    const el = dropRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') {
+      setDropH(0);
+      return;
+    }
+    const measure = () => setDropH(el.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // When a dropdown opens/closes, the card and the reserved top space glide together (same 140ms
+  // easeOutExpo as the panel drop-in) instead of jumping. The scroll position is compensated per
+  // frame: at the top everything slides as one chain, deeper down the reading content stays put
+  // while the card glides over it like any overlay. Both values are applied imperatively —
+  // render-driven styles would snap when a streaming re-render lands mid-animation.
+  const reserveRef = useRef(0);
+  const cardTopRef = useRef(0);
+  const prevDropHRef = useRef<number | null>(null);
+  const reserveAnimRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    if (reserveAnimRef.current != null) {
+      cancelAnimationFrame(reserveAnimRef.current);
+      reserveAnimRef.current = null;
+    }
+    const targetTop = dropH;
+    const targetReserve = pageFloatH > 0 ? dropH + pageFloatH + 8 : 0;
+    const fromReserve = reserveRef.current;
+    const fromTop = cardTopRef.current;
+    const apply = (pad: number, top: number) => {
+      reserveRef.current = pad;
+      cardTopRef.current = top;
+      el.style.paddingTop = pad > 0 ? `${Math.round(pad)}px` : '';
+      if (pageFloatRef.current) pageFloatRef.current.style.top = `${Math.round(top)}px`;
+      syncContentHeight();
+      refreshScrollBtn(el);
+    };
+
+    const dropChanged = prevDropHRef.current !== null && prevDropHRef.current !== dropH;
+    prevDropHRef.current = dropH;
+    const instant =
+      !dropChanged ||
+      pageFloatH === 0 ||
+      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+    if (instant) {
+      // Growing without animation: scroll along so the reading content stays put; shrinking needs
+      // nothing — the browser clamps scrollTop as the content pulls up.
+      const grow = targetReserve - fromReserve;
+      apply(targetReserve, targetTop);
+      if (grow > 0) scrollTo(el, el.scrollTop + Math.min(grow, el.scrollTop));
+      return;
+    }
+
+    const delta = targetReserve - fromReserve;
+    const startTop = el.scrollTop;
+    const shift = delta > 0 ? Math.min(delta, startTop) : 0;
+    const start = performance.now();
+    const duration = 140;
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = p >= 1 ? 1 : 1 - Math.pow(2, -10 * p);
+      apply(fromReserve + delta * eased, fromTop + (targetTop - fromTop) * eased);
+      if (shift > 0) scrollTo(el, startTop + shift * eased);
+      if (p < 1) {
+        reserveAnimRef.current = requestAnimationFrame(tick);
+      } else {
+        reserveAnimRef.current = null;
+        apply(targetReserve, targetTop);
+        if (shift > 0) scrollTo(el, startTop + shift);
+      }
+    };
+    reserveAnimRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (reserveAnimRef.current != null) {
+        cancelAnimationFrame(reserveAnimRef.current);
+        reserveAnimRef.current = null;
+      }
+    };
+  }, [dropH, pageFloatH, scrollTo, syncContentHeight]);
 
   // Measure natural text height before applying flex fill or interpolating the whole box. Expanded
   // mode never auto-collapses on short text — the button, send, and leaving the page collapse it.
@@ -1596,28 +1689,32 @@ export default function App() {
         </div>
       </header>
 
-      {settingsOpen && settings && (
-        <SettingsPanel
-          value={settings}
-          showToast={showToast}
-          onDone={(next) => {
-            setLocale(resolveLocale(next.locale));
-            setSettings(next);
-            setSettingsOpen(false);
-          }}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
+      {/* Panels drop as one strip anchored under the header; its height (= the open panel) drives
+          the page card's glide and the list's reserved top space (see the reserve animator). */}
+      <div ref={dropRef} className="hd-drop">
+        {settingsOpen && settings && (
+          <SettingsPanel
+            value={settings}
+            showToast={showToast}
+            onDone={(next) => {
+              setLocale(resolveLocale(next.locale));
+              setSettings(next);
+              setSettingsOpen(false);
+            }}
+            onClose={() => setSettingsOpen(false)}
+          />
+        )}
 
-      {historyOpen && (
-        <HistoryPanel
-          conversations={conversations}
-          conversationId={conversationId}
-          busy={busy}
-          onOpen={(id) => void openConversation(id)}
-          onDelete={(id) => void removeConversation(id)}
-        />
-      )}
+        {historyOpen && (
+          <HistoryPanel
+            conversations={conversations}
+            conversationId={conversationId}
+            busy={busy}
+            onOpen={(id) => void openConversation(id)}
+            onDelete={(id) => void removeConversation(id)}
+          />
+        )}
+      </div>
       </div>
 
       {/* Conversation area */}
@@ -1649,7 +1746,6 @@ export default function App() {
       <div
         className="list"
         ref={listRef}
-        style={{ paddingTop: pageFloatH > 0 ? `${pageFloatH + 8}px` : undefined }}
         onScroll={handleListScroll}
         onWheel={noteUserScroll}
         onTouchMove={noteUserScroll}
