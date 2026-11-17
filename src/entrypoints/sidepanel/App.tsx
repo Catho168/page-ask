@@ -1440,16 +1440,30 @@ export default function App() {
       const pad = cardH > 0 ? dropH + cardH + 8 : 0;
       const grow = pad - reserveRef.current;
       reserveRef.current = pad;
+      // Capture before the padding write: shrinking the reserve can clamp scrollTop once the
+      // smaller scrollHeight lands, and the shrink compensation needs the pre-change value.
+      const prevTop = list.scrollTop;
       list.style.paddingTop = pad > 0 ? `${Math.round(pad)}px` : '';
       if (cardEl) cardEl.style.top = `${Math.round(dropH)}px`;
       syncContentHeight();
+      // The card travels with the menu at its fixed spacing. During the strip's 140ms height
+      // expansion (see the openPanel effect below) this runs per frame — the ResizeObserver fires
+      // on every animated height step — so the card and the reserved padding stay glued to the
+      // strip's visible edge and no painted frame shows the panel up before the content made room.
+      // Scroll by the full growth whenever the list is scrolled past its top, so the reading
+      // content stays put and the panel reads as a floating overlay; at the very top stay at 0 so
+      // the growth pushes the content down instead. Capping the compensation at the current
+      // scrollTop (an earlier min(grow, scrollTop)) under-corrects mid-scroll positions and the
+      // text visibly drifts while the panel expands. Grow reads scrollTop after the padding write —
+      // growth never clamps, and the target only fits the already-grown scroll range; shrink uses
+      // the pre-write value because the browser clamps scrollTop only after the new layout lands,
+      // and compensating from the clamped value would double-subtract.
+      if (grow > 0) {
+        if (list.scrollTop > 0) scrollTo(list, list.scrollTop + grow);
+      } else if (grow < 0 && prevTop > 0) {
+        scrollTo(list, prevTop + grow);
+      }
       refreshScrollBtn(list);
-      // One step, no tween: the card travels with the menu at its fixed spacing (the panel's own
-      // 140ms drop-in supplies the motion), so there is no per-frame list relayout and no painted
-      // frame where the panel is already up before the content has made room (the "flash" when
-      // messages are on screen). Growing scrolls along so the reading content stays put; shrinking
-      // needs nothing — the browser clamps scrollTop as the content pulls up.
-      if (grow > 0) scrollTo(list, list.scrollTop + Math.min(grow, list.scrollTop));
     };
     apply();
     if (typeof ResizeObserver === 'undefined') return;
@@ -1460,6 +1474,33 @@ export default function App() {
     // settingsOpen/historyOpen swap the dropdown panel; pageState/verbose remount the card;
     // showPageText toggles the overlay preview (the reservation keeps the collapsed height).
   }, [settingsOpen, historyOpen, pageState, verbose, showPageText, scrollTo, syncContentHeight, refreshScrollBtn]);
+
+  // The dropdown reveals by growing the strip's height from 0 — never by fading: a translucent
+  // panel lets the conversation behind it flash through, and a full-height mount would make the
+  // page card jump before the panel is even visible. The strip stays fully opaque the whole time
+  // while overflow clipping reveals it top-down, and the ResizeObserver above re-applies the card
+  // offset and the list padding on every animated frame, so the card rides the same growth.
+  // Open-only: closing still unmounts instantly.
+  const openPanel = settingsOpen ? 'settings' : historyOpen ? 'history' : null;
+  const prevPanelRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const prev = prevPanelRef.current;
+    prevPanelRef.current = openPanel;
+    const el = dropRef.current;
+    if (!openPanel || prev === openPanel || !el || typeof el.animate !== 'function') return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const height = el.scrollHeight;
+    if (height <= 0) return;
+    el.animate(
+      [
+        { height: '0px', overflow: 'hidden' },
+        { height: `${height}px`, overflow: 'hidden' },
+      ],
+      // Same 140ms easeOutExpo the old fade used: front-loads the motion so the expand reads in a
+      // single frame yet lands without a hard stop.
+      { duration: 140, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+    );
+  }, [openPanel]);
 
   // Measure natural text height before applying flex fill or interpolating the whole box. Expanded
   // mode never auto-collapses on short text — the button, send, and leaving the page collapse it.
